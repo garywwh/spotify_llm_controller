@@ -152,6 +152,14 @@ async def handle_get_info_action(session: ClientSession, params: Dict[str, Any],
 
     try:
         result_text = next((msg.text for msg in result.content if hasattr(msg, 'text')), '{}')
+        
+        # Check if the result is an error message (plain text)
+        if result_text.startswith("Get info error:"):
+            error_msg = result_text.replace("Get info error: ", "")
+            logger.error(f"Server returned error: {error_msg}")
+            return {"error": f"Server error: {error_msg}"}
+        
+        # Try to parse as JSON
         album_data = json.loads(result_text)
         album_tracks = album_data.get("tracks", [])
         if not album_tracks:
@@ -166,6 +174,7 @@ async def handle_get_info_action(session: ClientSession, params: Dict[str, Any],
         }
     except (json.JSONDecodeError, KeyError) as e:
         logger.error(f"Failed to parse album tracks: {e}")
+        logger.error(f"Raw result text: {result_text}")
         return {"error": "Failed to parse album information"}
 
 async def handle_playback_action(session: ClientSession, params: Dict[str, Any], 
@@ -255,6 +264,46 @@ async def handle_playback_action(session: ClientSession, params: Dict[str, Any],
             "type": "skip",
             "message": "Skipped to next track"
         }
+    elif params.get("action") == "previous":
+        action_result = {
+            "action": "playback",
+            "type": "previous",
+            "message": "Went to previous track"
+        }
+    elif params.get("action") == "get":
+        # For get action, try to parse the response content
+        try:
+            result_text = next((msg.text for msg in result.content if hasattr(msg, 'text')), '{}')
+            if result_text and result_text != '{}' and result_text != "No track playing.":
+                # Try to parse as JSON first
+                try:
+                    current_track_data = json.loads(result_text)
+                    action_result = {
+                        "action": "playback",
+                        "type": "get",
+                        "message": "Current track information retrieved",
+                        "current_track": current_track_data
+                    }
+                except json.JSONDecodeError:
+                    # If not JSON, treat as plain text message
+                    action_result = {
+                        "action": "playback",
+                        "type": "get",
+                        "message": result_text
+                    }
+            else:
+                action_result = {
+                    "action": "playback",
+                    "type": "get",
+                    "message": "No track currently playing"
+                }
+        except Exception as e:
+            logger.error(f"Error parsing current track response: {e}")
+            action_result = {
+                "action": "playback",
+                "type": "get",
+                "message": "Failed to get current track information"
+            }
     else:
         action_result = {
             "action": "playback",
@@ -469,6 +518,71 @@ def format_final_response(results: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "success": successful_actions[-1],
                 "errors": all_errors
             }
+        }
+    
+    # Check if this is a current track request
+    last_result = results[-1]
+    if (last_result.get("action") == "playback" and 
+        last_result.get("type") == "get"):
+        
+        # Handle case where no track is playing
+        if "current_track" not in last_result:
+            return {
+                "message": "🎵 No track is currently playing",
+                "details": last_result
+            }
+        
+        # Handle case where current_track exists
+        
+        track_data = last_result["current_track"]
+        
+        # Format current track information for display
+        track_name = track_data.get("name", "Unknown")
+        
+        # Handle artist(s) - could be single artist or multiple artists
+        if "artist" in track_data:
+            artist = track_data["artist"]
+        elif "artists" in track_data:
+            artists = track_data["artists"]
+            if isinstance(artists, list) and len(artists) > 0:
+                if isinstance(artists[0], dict):
+                    artist = ", ".join([a.get("name", "Unknown") for a in artists])
+                else:
+                    artist = ", ".join(artists)
+            else:
+                artist = "Unknown Artist"
+        else:
+            artist = "Unknown Artist"
+            
+        is_playing = track_data.get("is_playing", False)
+        status = "▶️ Playing" if is_playing else "⏸️ Paused"
+        
+        # Build a user-friendly message
+        message = f"🎵 Current Track:\n\n"
+        message += f"🎤 **{track_name}**\n"
+        message += f"👤 {artist}\n"
+        message += f"📱 {status}"
+        
+        # Add additional info if available
+        if "album" in track_data:
+            album = track_data["album"]
+            if isinstance(album, dict):
+                album_name = album.get("name", "Unknown Album")
+            else:
+                album_name = str(album)
+            message += f"\n💿 {album_name}"
+            
+        if "duration_ms" in track_data:
+            duration_min = track_data["duration_ms"] // 60000
+            duration_sec = (track_data["duration_ms"] % 60000) // 1000
+            message += f"\n⏱️ Duration: {duration_min}:{duration_sec:02d}"
+        
+        if "popularity" in track_data:
+            message += f"\n📊 Popularity: {track_data['popularity']}/100"
+            
+        return {
+            "message": message,
+            "details": last_result
         }
     
     return {

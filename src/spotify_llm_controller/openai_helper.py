@@ -115,6 +115,10 @@ def parse_llm_response(content: str) -> Dict[str, Any]:
         else:
             return {"error": "LLM response is not valid JSON"}
     
+    # Check if the response is an error object
+    if isinstance(parsed, dict) and "error" in parsed and len(parsed) == 1:
+        return parsed  # Return error response directly
+    
     # Validate response structure
     if not isinstance(parsed, list):
         parsed = [parsed]  # Handle single action for backward compatibility

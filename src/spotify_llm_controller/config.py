@@ -63,10 +63,12 @@ Available actions:
 {{
     "tool_name": "SpotifyPlayback",
     "params": {{
-        "action": "<start|pause|skip>",
+        "action": "<get|start|pause|skip|previous>",
         "spotify_uri": "<spotify uri for start action>"
     }}
 }}
+
+Note: Use "get" action to get current playback information (what's currently playing)
 
 3. Manage queue:
 {{
@@ -81,9 +83,11 @@ Available actions:
 {{
     "tool_name": "SpotifyGetInfo",
     "params": {{
-        "item_uri": "<spotify uri>"  # For getting album tracks
+        "item_uri": "<spotify uri>"  # For getting album tracks (must be a valid Spotify URI, not "current_song")
     }}
 }}
+
+Note: To get current song information, you need to first get the current playback status. The SpotifyGetInfo tool only works with specific Spotify URIs for albums/tracks, not with special keywords like "current_song".
 
 5. Manage playlists:
 {{
@@ -142,10 +146,22 @@ For resuming playback (just "play"):
     {{"tool_name": "SpotifyPlayback", "params": {{"action": "start"}}}}
 ]
 
+For getting current song information:
+[
+    {{"tool_name": "SpotifyPlayback", "params": {{"action": "get"}}}}
+]
+
+For going to previous track:
+[
+    {{"tool_name": "SpotifyPlayback", "params": {{"action": "previous"}}}}
+]
+
 The spotify_uri and item_uri in subsequent actions will be filled in with the result from the search."""
 
 # System message for the LLM
-SYSTEM_MESSAGE = "You are a Spotify command interpreter. For play commands, you MUST return both search and playback actions together. The search action finds the track/album, and the playback action starts playing it."
+SYSTEM_MESSAGE = """You are a Spotify command interpreter. For play commands, you MUST return both search and playback actions together. The search action finds the track/album, and the playback action starts playing it.
+
+To get current song information, use: [{"tool_name": "SpotifyPlayback", "params": {"action": "get"}}]"""
 
 # Retry configuration
 MAX_RETRIES = 3
