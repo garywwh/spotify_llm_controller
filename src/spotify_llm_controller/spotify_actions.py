@@ -32,6 +32,7 @@ async def call_tool_with_retry(session: ClientSession, tool_name: str, params: D
     retries = 0
     while retries < max_retries:
         try:
+            logger.info(f"Calling tool {tool_name} with params: {params}")
             result = await session.call_tool(tool_name, params)
             return result
         except Exception as e:
@@ -55,6 +56,7 @@ async def handle_search_action(session: ClientSession, params: Dict[str, Any]) -
         Search result or error information
     """
     # Do the search
+    logger.info(f"Searching Spotify with params: {params}")
     result = await call_tool_with_retry(session, "SpotifySearch", params)
     logger.info(f"Search result: {result}")
     
@@ -494,7 +496,7 @@ async def execute_single_action(session: ClientSession, tool_name: str, params: 
         logger.error(f"Unsupported tool: {tool_name}")
         return {"error": f"Unsupported action: {tool_name}"}
 
-def format_final_response(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+def format_final_response(results: List[Dict[str, Any]], llm_description: str = None) -> Dict[str, Any]:
     """
     Format the final response from a sequence of action results.
     
@@ -585,12 +587,15 @@ def format_final_response(results: List[Dict[str, Any]]) -> Dict[str, Any]:
             "details": last_result
         }
     
-    return {
+    response = {
         "message": results[-1].get("message", "Command executed successfully"),
         "details": results[-1]
     }
+    if llm_description:
+        response["llm_description"] = llm_description
+    return response
 
-async def execute_spotify_actions(session: ClientSession, actions: List[Dict[str, Any]]) -> Dict[str, Any]:
+async def execute_spotify_actions(session: ClientSession, actions: List[Dict[str, Any]], llm_description: str = None) -> Dict[str, Any]:
     """
     Execute a sequence of Spotify actions through the MCP server.
     
@@ -615,7 +620,6 @@ async def execute_spotify_actions(session: ClientSession, actions: List[Dict[str
     try:
         results = []
         context = {"search_result": None, "album_tracks": None}
-        
         for action in actions:
             tool_name = action["tool_name"]
             params = action["params"]
@@ -623,12 +627,10 @@ async def execute_spotify_actions(session: ClientSession, actions: List[Dict[str
             
             result = await execute_single_action(session, tool_name, params, context)
             results.append(result)
-            
             # If this action failed and it's critical (like search), return immediately
             if "error" in result and tool_name == "SpotifySearch":
                 logger.error(f"Critical action {tool_name} failed: {result['error']}")
                 return result
-            
             # Update context with results if needed
             if "error" not in result:
                 if result.get("action") == "search":
@@ -638,7 +640,7 @@ async def execute_spotify_actions(session: ClientSession, actions: List[Dict[str
                     context["album_info"] = result.get("result")
                     logger.info(f"Updated album info context: {context['album_info']}")
         
-        return format_final_response(results)
+        return format_final_response(results, llm_description)
     except Exception as e:
         logger.exception(f"Error executing Spotify action: {e}")
         return {"error": str(e)}

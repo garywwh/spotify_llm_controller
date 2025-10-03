@@ -75,9 +75,13 @@ async def handle_command(request: CommandRequest):
     logger.info(f"Received command: {request.command}")
 
     # Parse the command using LLM
-    actions = parse_command_with_llm(request.command)
-    if "error" in actions:
-        return actions
+    actions_result = parse_command_with_llm(request.command)
+    if "error" in actions_result:
+        return actions_result
+
+    # Extract actions and description
+    actions = actions_result.get("actions", actions_result)
+    description = actions_result.get("description", "")
 
     # Execute the actions through MCP server
     mcp_endpoint = f"{MCP_SERVER_URL}/mcp"
@@ -86,6 +90,10 @@ async def handle_command(request: CommandRequest):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await execute_spotify_actions(session, actions)
+                # Attach description if present
+                if description:
+                    if isinstance(result, dict):
+                        result["llm_description"] = description
                 logger.info(f"Action result: {result}")
                 return result
     except Exception as e:

@@ -32,7 +32,7 @@ load_dotenv(dotenv_path=env_path)
 logger.info(f"Loaded environment variables from {env_path.absolute() if env_path.exists() else 'environment'}")
 
 # Server configuration
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8080")
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://127.0.0.1:8082")
 MCP_CLIENT_PORT = int(os.getenv("MCP_CLIENT_PORT", "8090"))
 
 # OpenAI configuration
@@ -40,11 +40,15 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     logger.warning("OPENAI_API_KEY not found in environment variables")
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
-OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "150"))
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+OPENAI_MAX_TOKENS = int(os.getenv("OPENAI_MAX_TOKENS", "5000"))
 
 # Spotify command interpreter prompt
 SPOTIFY_COMMAND_PROMPT = """You are a Spotify command interpreter. Your task is to interpret natural language commands into a series of actions to control Spotify playback.
+
+If you are asked to recommend music, you use your knowledge to identify tracks or albums that match the user's request. Then you return a series of actions to play or queue the recommended music.
+
+IMPORTANT: Never ask the user to confirm.  Just use your best judgement to playback immediately.
 
 Command: {command}
 
@@ -161,7 +165,9 @@ The spotify_uri and item_uri in subsequent actions will be filled in with the re
 # System message for the LLM
 SYSTEM_MESSAGE = """You are a Spotify command interpreter. For play commands, you MUST return both search and playback actions together. The search action finds the track/album, and the playback action starts playing it.
 
-To get current song information, use: [{"tool_name": "SpotifyPlayback", "params": {"action": "get"}}]"""
+To get current song information, use: [{"tool_name": "SpotifyPlayback", "params": {"action": "get"}}]
+
+If you were asked to recommend music, you use your knowledge to identify tracks or albums that match the user's request. Then you return a series of actions to play or queue the recommended music. In the response to the user, you can also include the interesting story of the background information about the recommended music, such as artist, album, and release year, etc."""
 
 # Retry configuration
 MAX_RETRIES = 3

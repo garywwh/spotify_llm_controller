@@ -78,57 +78,70 @@ class OpenAIClient:
                 response = client.chat.completions.create(
                     model=model,
                     messages=messages,
-                    max_tokens=max_tokens
+                    max_completion_tokens=max_tokens
                 )
-                return response.choices[0].message.content.strip()
+                logger.info(f"Raw OpenAI response: {response}")
+                content = response.choices[0].message.content if response.choices else None
+                logger.info(f"Extracted content: {content}")
+                if not content:
+                    logger.error("OpenAI returned empty content.")
+                    return ""
+                return content.strip()
         except Exception as e:
             logger.error(f"OpenAI API call failed: {e}")
             raise
 
 def parse_llm_response(content: str) -> Dict[str, Any]:
     """
-    Parse the LLM response into a structured format.
-    
+    Parse the LLM response into a structured format and extract any trailing description.
+
     Args:
         content: The raw text response from the LLM
-        
+
     Returns:
-        Parsed actions or error information
-        
-    Raises:
-        ValueError: If the response cannot be parsed
+        Dict with keys:
+            - actions: Parsed actions (list)
+            - description: Optional trailing description (str)
+            - error: Error information if parsing fails
     """
     if not content:
         return {"error": "Received empty response from LLM"}
-        
+
     try:
         # Try direct JSON parsing
         parsed = json.loads(content)
+        actions = parsed if isinstance(parsed, list) else [parsed]
+        description = ""
     except json.JSONDecodeError:
-        # Try to extract JSON from text response (sometimes LLM adds explanatory text)
-        json_match = re.search(r'\[.*\]', content, re.DOTALL)
+        # Try to extract JSON array from text response
+        json_match = re.search(r'(\[.*?\])', content, re.DOTALL)
         if json_match:
             try:
-                parsed = json.loads(json_match.group(0))
-            except:
+                actions = json.loads(json_match.group(1))
+                # Extract description after JSON
+                description = content[json_match.end():].strip()
+            except Exception:
                 return {"error": "Failed to parse LLM response as JSON"}
         else:
             return {"error": "LLM response is not valid JSON"}
-    
+
     # Check if the response is an error object
-    if isinstance(parsed, dict) and "error" in parsed and len(parsed) == 1:
-        return parsed  # Return error response directly
-    
+    if isinstance(actions, dict) and "error" in actions and len(actions) == 1:
+        return actions  # Return error response directly
+
     # Validate response structure
-    if not isinstance(parsed, list):
-        parsed = [parsed]  # Handle single action for backward compatibility
-        
-    for action in parsed:
+    if not isinstance(actions, list):
+        actions = [actions]  # Handle single action for backward compatibility
+
+    for action in actions:
         if not isinstance(action, dict):
             raise ValueError("Each action must be a dictionary")
         if "tool_name" not in action:
             raise ValueError("Action missing tool_name")
         if "params" not in action:
             raise ValueError("Action missing params")
-        
-    return parsed
+
+    result = {"actions": actions}
+    if description:
+        result["description"] = description
+    return result
